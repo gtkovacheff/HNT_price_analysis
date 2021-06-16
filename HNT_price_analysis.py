@@ -7,39 +7,35 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import GridSearchCV
 
+#define date parser
+date_parser = lambda x: pd.to_datetime(x, format='%d.%m.%Y')
+
+date_parser_2=lambda x: pd.to_datetime(x, format='%b %d, %Y')
+column_parser_clean=lambda x: x.replace('€ ', '').replace('€', '').replace(',', '')
+column_parser_to_numeric=lambda x: pd.to_numeric(x)
 #load_the_data
-HNT_hotspot_Data = pd.read_csv('Data/HNT_data.csv', sep=';').drop('Price', axis=1) #price column Irrelevant since we join with historical data
-HNT_historical_price = pd.read_csv('Data/HNT_historical_data.csv', sep=';')
+# HNT_hotspot_Data = pd.read_csv('Data/HNT_hotspot_data.csv', sep=';', dtype={'Date': np.datetime64, 'Number of Hotspots': np.int64})
+HNT_hotspot_Data = pd.read_csv('Data/HNT_hotspot_data.csv', sep=';', dtype={'Number of Hotspots': np.int64}, parse_dates=['Date'], date_parser=date_parser)
+HNT_historical_price = pd.read_csv('Data/HNT_historical_data.csv', sep=';', parse_dates=['Date'],  date_parser=date_parser_2)
+HNT_historical_price.loc[:, ['Open*', 'High', 'Low', 'Close**', 'Volume', 'Market Cap']] = HNT_historical_price.loc[:, ['Open*', 'High', 'Low', 'Close**', 'Volume', 'Market Cap']].\
+    applymap(column_parser_clean).applymap(column_parser_to_numeric)
+
 HNT_historical_price.rename(columns={'Open*': 'Open', 'Close**': 'Close'}, inplace=True)
 
-#Some data wrangling
-for i in HNT_historical_price.columns:
-    if i == 'Date':
-        HNT_historical_price['Date'] = pd.to_datetime(HNT_historical_price['Date'], format='%b %d, %Y')
-    else:
-        HNT_historical_price[i] = HNT_historical_price[i].map(lambda x: x.replace('€ ', '').replace('€', '').replace(',', ''))
-
-#to pd_date_time
-HNT_hotspot_Data['Date'] = pd.to_datetime(HNT_hotspot_Data['Date'], format='%d.%m.%Y')
-
 #remove the first 6 points and the last one
-HNT_hotspot_Data = HNT_hotspot_Data[6:-1].reset_index(drop=True) # because of missing data
+# HNT_hotspot_Data = HNT_hotspot_Data[6:-1].reset_index(drop=True) #because of missing data
 
 #join HNT_hotspot_Data with HNT_historical_price['Price']
-HNT_hotspot_Data = pd.merge(HNT_hotspot_Data, HNT_historical_price[['Date', 'Close']], how='inner', on='Date').rename(columns={'Close': 'Price'})
-
-#convert to numeric
-for i in HNT_hotspot_Data.columns[1:]:
-    HNT_hotspot_Data[i]=pd.to_numeric(HNT_hotspot_Data[i])
+prepped_data = pd.merge(HNT_historical_price[['Date', 'Close']], HNT_hotspot_Data, how='left', on='Date')
 
 #find corr between the variables --> 0.884
-HNT_hotspot_Data.corr()
+prepped_data.corr()
 
 #line plot NumberHotspots VS Price
-HNT_hotspot_Data.plot(x='Number of Hotspots', y='Price', title='NumberOfHotspots vs Price')
+prepped_data.plot(x='Number of Hotspots', y='Price', title='NumberOfHotspots vs Price')
 
 #X_train, y_train
-X_train, y_train = HNT_hotspot_Data.loc[:, 'Number of Hotspots'].values.reshape(-1, 1), HNT_hotspot_Data.Price.values.reshape(-1, 1)
+X_train, y_train = prepped_data.loc[:, 'Number of Hotspots'].values.reshape(-1, 1), HNT_hotspot_Data.Price.values.reshape(-1, 1)
 
 #Linear reggression
 reg = linear_model.LinearRegression()
